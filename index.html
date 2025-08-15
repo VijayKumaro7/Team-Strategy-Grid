@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team Strategy Grid — Hot‑Seat Co‑op/Versus</title>
+  <style>
+    :root{
+      --bg:#0f1226; --panel:#171a33; --panel2:#1e2250; --accent:#7dd3fc; --accent2:#a78bfa; --good:#34d399; --bad:#f87171; --warn:#f59e0b; --text:#e5e7eb; --muted:#9ca3af;
+      --tile:#1b204a; --tile2:#10132f; --wall:#0b0f2b; --fog:#07091a; --obj:#ffe45e;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(135deg,var(--bg),#0b0e22 60%);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+    header{display:flex;gap:12px;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.03);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,0.08)}
+    header h1{font-size:16px;margin:0;letter-spacing:0.3px;opacity:0.9}
+    .pill{padding:6px 10px;background:var(--panel);border:1px solid rgba(255,255,255,0.08);border-radius:999px;display:flex;align-items:center;gap:8px}
+    .pill label{opacity:0.8}
+    .pill input[type="number"],.pill input[type="text"],.pill select{width:84px;background:transparent;color:var(--text);border:1px solid rgba(255,255,255,0.14);border-radius:8px;padding:4px 6px;outline:none}
+    .pill input[type="text"]{width:120px}
+    .btn{cursor:pointer;padding:8px 12px;border-radius:12px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid rgba(255,255,255,0.18);color:var(--text);transition:150ms transform,200ms box-shadow;box-shadow:0 4px 18px rgba(0,0,0,0.3)}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,0,0,0.35)}
+    .btn:active{transform:translateY(0)}
+    .layout{display:grid;grid-template-columns:320px 1fr 320px;gap:12px;padding:12px;height:calc(100vh - 58px)}
+    .panel{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:12px;overflow:auto}
+    #left .stat{display:grid;grid-template-columns:1fr auto;gap:6px;padding:6px 8px;background:#111432;border:1px solid rgba(255,255,255,0.08);border-radius:12px;margin-bottom:8px}
+    #gamewrap{position:relative}
+    #game{display:block;width:100%;height:100%;background:radial-gradient(1200px 800px at 60% 40%,#11153a,#0a0d26)}
+    #overlay{position:absolute;inset:0;pointer-events:none}
+    .tag{display:inline-block;padding:3px 8px;border-radius:999px;font-weight:600;letter-spacing:0.3px}
+    .tag.blue{background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.35)}
+    .tag.red{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35)}
+    .legend{display:flex;flex-wrap:wrap;gap:8px}
+    .legend span{display:flex;align-items:center;gap:6px;background:#0b0f2b;padding:5px 8px;border-radius:10px;border:1px solid rgba(255,255,255,0.08)}
+    .chip{width:14px;height:14px;border-radius:4px;display:inline-block}
+    .fogBanner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    .fogBanner .clock{background:rgba(10,13,40,0.7);border:1px solid rgba(255,255,255,0.15);padding:14px 18px;border-radius:14px;font-size:18px;display:flex;gap:10px;align-items:center}
+    .clock b{font-variant-numeric:tabular-nums}
+    #testout{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#0b0f2b;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px}
+    .subtle{opacity:.75}
+    .kbd{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:#0b0f2b;padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.12)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Team Strategy Grid <span class="subtle">— fog‑of‑war, squads, timer, procedural maps</span></h1>
+    <div class="pill">
+      <label>Seed</label>
+      <input id="seedInput" type="text" value="TEAM123" />
+      <label>Difficulty</label>
+      <select id="difficulty">
+        <option>Easy</option>
+        <option selected>Medium</option>
+        <option>Hard</option>
+      </select>
+      <button class="btn" id="regen">New Map</button>
+    </div>
+    <div class="pill">
+      <button class="btn" id="endTurn">End Turn (E)</button>
+      <button class="btn" id="toggleFOW">Toggle Fog (F)</button>
+      <button class="btn" id="clearSel">Clear Selection (ESC)</button>
+    </div>
+    <div class="pill">
+      <span class="tag blue" id="turnTag">Blue Turn</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div id="left" class="panel">
+      <div class="stat"><div>Round</div><div id="round">1</div></div>
+      <div class="stat"><div>Team</div><div id="team">Blue</div></div>
+      <div class="stat"><div>Timer</div><div id="timer">60</div></div>
+      <div class="stat"><div>Comms used</div><div><span id="commsUsed">0</span>/<span id="commsLimit">5</span></div></div>
+      <div class="stat"><div>Selected units</div><div id="selCount">0</div></div>
+      <div class="stat"><div>Action points</div><div id="ap">0</div></div>
+      <div style="margin:10px 0">
+        <div class="legend">
+          <span><i class="chip" style="background:#3b82f6"></i> Blue</span>
+          <span><i class="chip" style="background:#ef4444"></i> Red</span>
+          <span><i class="chip" style="background:var(--obj)"></i> Objective</span>
+          <span><i class="chip" style="background:var(--wall)"></i> Wall</span>
+          <span><i class="chip" style="background:#0ea5e9"></i> Vision</span>
+        </div>
+      </div>
+      <p class="subtle">Controls: Click to select, <span class="kbd">Shift</span> add, drag to box‑select. Right‑click or <span class="kbd">M</span> to move. <span class="kbd">E</span> end turn. <span class="kbd">F</span> fog toggle. <span class="kbd">ESC</span> clear. Units have 3 AP/turn; moving to an adjacent tile costs 1 AP.</p>
+    </div>
+
+    <div id="gamewrap" class="panel">
+      <canvas id="game"></canvas>
+      <div id="overlay"></div>
+      <div class="fogBanner" id="turnOverlay" style="display:none">
+        <div class="clock">Team swap… Next: <span id="nextTeam">Red</span></div>
+      </div>
+      <div class="fogBanner" id="clockOverlay" style="display:none">
+        <div class="clock">Decision time <b id="clock">60</b>s</div>
+      </div>
+    </div>
+
+    <div id="right" class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <h3 style="margin:4px 0">Team Chat (per‑turn limit)</h3>
+        <div style="min-width:120px">
+          <div class="meter"><i id="meterFill" style="display:block;height:8px;background:linear-gradient(90deg,var(--good),#10b981);width:0%"></i></div>
+        </div>
+      </div>
+      <div id="chat">
+        <div id="chatlog"></div>
+        <input id="chatInput" placeholder="Type (Enter)…"/>
+      </div>
+      <div style="margin-top:12px">
+        <details>
+          <summary>Optional: Simple WebSocket relay (experimental)</summary>
+          <p class="subtle">Set a ws:// URL below and press Connect to mirror moves/chat across clients. Requires a tiny relay server (not provided here).
+          </p>
+          <div style="display:flex;gap:6px">
+            <input id="wsUrl" placeholder="ws://localhost:8080" style="flex:1"/>
+            <button class="btn" id="wsBtn">Connect</button>
+          </div>
+          <div id="wsState" class="subtle" style="margin-top:6px">Not connected</div>
+        </details>
+      </div>
+
+      <hr style="opacity:.15;margin:14px 0">
+      <details open>
+        <summary><b>Built‑in Tests</b> (click Run)</summary>
+        <div style="display:flex;gap:8px;margin:8px 0">
+          <button class="btn" id="runTests">Run Tests</button>
+          <button class="btn" id="regenAndTest">New Map + Tests</button>
+        </div>
+        <div id="testout" aria-live="polite">No tests run yet.</div>
+      </details>
+    </div>
+  </div>
+
+<script>
+function xmur3(str){let h=1779033703^str.length;for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),3432918353);h=h<<13|h>>>19}return function(){h=Math.imul(h^(h>>>16),2246822507);h=Math.imul(h^(h>>>13),3266489909);return (h^(h>>>16))>>>0}}
+function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296}}
+
+const GRID_W=22, GRID_H=18, TILE=36;
+const MAX_AP=3; const VISION=4; const COMM_LIMIT=5;
+const COLORS={bgA:'#0a0d26',grid:'#0f1230',blue:'#3b82f6',red:'#ef4444',wall:'#0b0f2b',fog:'#07091a',obj:'#ffe45e',vision:'#0ea5e955',sel:'#7dd3fc',ghost:'#94a3b8'};
+
+let seedState='TEAM123';
+let rng = mulberry32(xmur3(seedState)());
+
+let state={round:1,team:'Blue',fog:true,comms:{Blue:0,Red:0},ap:0,timer:60,timerId:null,ws:null,wsOpen:false};
+const map={w:GRID_W,h:GRID_H,tiles:[],objectives:[]};
+const units=[];
+let selectionBox=null; let hoverCell=null; let pathPreview=[];
+
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+const overlay=document.getElementById('overlay');
+function resize(){
+  const gw=document.getElementById('gamewrap');
+  const pad=16; const w=Math.max(1,gw.clientWidth-pad*2); const h=Math.max(1,gw.clientHeight-pad*2);
+  const cw=map.w*TILE, ch=map.h*TILE; let scale=Math.min(w/cw,h/ch);
+  if(!Number.isFinite(scale) || scale<=0){ scale=1 }
+  canvas.width=cw*scale; canvas.height=ch*scale; canvas.style.width=canvas.width+'px'; canvas.style.height=canvas.height+'px';
+  ctx.setTransform(scale,0,0,scale,0,0);
+  safeDraw();
+}
+window.addEventListener('resize', resize);
+
+function genMap(seedStr, difficulty){
+  seedState=(seedStr||'TEAM123')+''; rng=mulberry32(xmur3(seedState)());
+  map.tiles=Array.from({length:map.h},()=>Array(map.w).fill(0));
+  const wallProb = difficulty==='Hard'?0.23: difficulty==='Medium'?0.17:0.12;
+  for(let y=0;y<map.h;y++){
+    for(let x=0;x<map.w;x++){
+      const edge=(x===0||y===0||x===map.w-1||y===map.h-1);
+      if(edge){map.tiles[y][x]=1; continue}
+      map.tiles[y][x]=(rng()<wallProb?1:0);
+    }
+  }
+  const lanes=3; for(let i=0;i<lanes;i++){
+    let cx=1, cy=Math.floor((i+1)*(map.h/(lanes+1)));
+    while(cx<map.w-1){ map.tiles[cy][cx]=0; if(rng()<0.6){ cy=Math.max(1,Math.min(map.h-2, cy+(rng()<0.5?-1:1))) } cx++; }
+  }
+  map.objectives=[{x:Math.floor(map.w/2),y:Math.floor(map.h/2)},{x:Math.floor(map.w/2)-4,y:Math.floor(map.h/2)},{x:Math.floor(map.w/2)+4,y:Math.floor(map.h/2)}];
+  for(const o of map.objectives){ if(map.tiles[o.y] && map.tiles[o.y][o.x]!==undefined){ map.tiles[o.y][o.x]=2 } }
+  units.length=0;
+  spawnTeam('Blue', 1, 6);
+  spawnTeam('Red', map.w-3, 6);
+  state.round=1; state.team='Blue'; state.comms.Blue=0; state.comms.Red=0; state.timer=60; resetAP();
+  pushLog('System',`New map (seed ${seedState}, ${difficulty})`);
+}
+function collectOpenSpotsInStrip(sx){
+  const out=[]; for(let y=1;y<map.h-1;y++){ for(let x=sx;x<sx+2;x++){ if(map.tiles[y] && map.tiles[y][x]===0) out.push({x,y}) } } return out;
+}
+function collectAnyOpenSpots(half){
+  const out=[]; const start=half==='left'?1:Math.floor(map.w/2), end=half==='left'?Math.floor(map.w/2):map.w-1;
+  for(let y=1;y<map.h-1;y++){ for(let x=start;x<end;x++){ if(map.tiles[y] && map.tiles[y][x]===0) out.push({x,y}) } } return out;
+}
+function spawnTeam(team,sx,count){
+  const spots=collectOpenSpotsInStrip(sx);
+  if(spots.length<count){ spots.push(...collectAnyOpenSpots(team==='Blue'?'left':'right')) }
+  shuffle(spots);
+  const n=Math.min(count, spots.length);
+  for(let i=0;i<n;i++){
+    const s=spots[i]; if(!s) continue; units.push({id:(team?team[0]:'?')+i, team:team||'Blue', x:s.x, y:s.y, ap:MAX_AP, hp:3, selected:false, lastSeen:null});
+  }
+}
+function shuffle(a){ if(!Array.isArray(a)) return; for(let i=a.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); const ai=a[i], aj=a[j]; a[i]=aj; a[j]=ai } }
+
+function visibleFor(team){
+  const vis=new Set();
+  const add=(x,y)=>{ if(x>=0&&y>=0&&x<map.w&&y<map.h) vis.add(x+','+y) };
+  for(const u of units){ if(u.team!==team) continue; for(let dy=-VISION; dy<=VISION; dy++){ for(let dx=-VISION; dx<=VISION; dx++){ if(dx*dx+dy*dy<=VISION*VISION){ add(u.x+dx,u.y+dy) } } } }
+  return vis;
+}
+
+function resetAP(){ for(const u of units){ u.ap=MAX_AP; u.selected=false } updateHUD(); startTimer(); }
+function endTurn(){
+  const vis=visibleFor(state.team);
+  for(const u of units){ if(u.team!==state.team){ const key=u.x+','+u.y; if(vis.has(key)) u.lastSeen={x:u.x,y:u.y,round:state.round} } }
+  state.team=(state.team==='Blue'?'Red':'Blue');
+  document.getElementById('turnTag').className='tag '+(state.team==='Blue'?'blue':'red');
+  document.getElementById('turnTag').textContent=state.team+' Turn';
+  state.round += (state.team==='Blue')?1:0;
+  state.comms[state.team]=0;
+  state.timer=60; resetAP();
+  selectionBox=null; pathPreview=[]; updateHUD(); safeDraw();
+  flipTurnOverlay();
+}
+
+function passable(x,y){ return x>=0&&y>=0&&x<map.w&&y<map.h && map.tiles[y] && map.tiles[y][x]!==1 && !unitAt(x,y) }
+function unitAt(x,y){ return units.find(u=>u.x===x&&u.y===y) }
+function neighbors(x,y){
+  const cand=[[1,0],[-1,0],[0,1],[0,-1]]; const out=[];
+  for(let i=0;i<cand.length;i++){ const dx=cand[i][0], dy=cand[i][1]; const nx=x+dx, ny=y+dy; if(passable(nx,ny)) out.push([nx,ny]) }
+  return out;
+}
+function bfs(start,goal){
+  if(!start||!goal) return null;
+  const q=[{x:start.x,y:start.y}]; const came=new Map([[start.x+','+start.y,null]]);
+  while(q.length){ const cur=q.shift(); if(cur.x===goal.x&&cur.y===goal.y) break; const neigh=neighbors(cur.x,cur.y)||[]; for(let i=0;i<neigh.length;i++){ const nx=neigh[i][0], ny=neigh[i][1]; const k=nx+','+ny; if(!came.has(k)){ came.set(k,cur); q.push({x:nx,y:ny}) } } }
+  let cur=goal; const path=[]; const goalKey=goal.x+','+goal.y; if(!came.has(goalKey)) return null; while(cur){ path.push(cur); cur=came.get(cur.x+','+cur.y) } return path.reverse();
+}
+
+function draw(){
+  ctx.clearRect(0,0,map.w*TILE,map.h*TILE);
+  ctx.fillStyle=COLORS.bgA; ctx.fillRect(0,0,map.w*TILE,map.h*TILE);
+  for(let y=0;y<map.h;y++){
+    for(let x=0;x<map.w;x++){
+      const row=map.tiles[y]; const t=row?row[x]:1;
+      ctx.fillStyle= t===1?COLORS.wall: (t===2?COLORS.obj:'#10132f');
+      ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+      ctx.strokeStyle=COLORS.grid; ctx.lineWidth=1; ctx.strokeRect(x*TILE+0.5,y*TILE+0.5,TILE-1,TILE-1);
+    }
+  }
+  for(const o of map.objectives){ ctx.fillStyle=COLORS.obj; ctx.beginPath(); ctx.arc(o.x*TILE+TILE/2,o.y*TILE+TILE/2,6,0,Math.PI*2); ctx.fill(); }
+
+  if(Array.isArray(pathPreview) && pathPreview.length>0){
+    ctx.strokeStyle='#7dd3fcaa'; ctx.lineWidth=3; ctx.beginPath(); const first=pathPreview[0]; if(first){ ctx.moveTo(first.x*TILE+TILE/2, first.y*TILE+TILE/2); for(let i=0;i<pathPreview.length;i++){ const p=pathPreview[i]; ctx.lineTo(p.x*TILE+TILE/2,p.y*TILE+TILE/2) } ctx.stroke(); }
+  }
+
+  const vis = state.fog? visibleFor(state.team):null;
+  for(const u of units){
+    if(state.fog && u.team!==state.team){ const key=u.x+','+u.y; if(!vis.has(key)){ if(u.lastSeen){ ctx.fillStyle=COLORS.ghost; ctx.beginPath(); ctx.arc(u.lastSeen.x*TILE+TILE/2,u.lastSeen.y*TILE+TILE/2,12,0,Math.PI*2); ctx.fill(); } continue; } }
+    ctx.fillStyle= u.team==='Blue'?COLORS.blue:COLORS.red;
+    ctx.beginPath(); ctx.arc(u.x*TILE+TILE/2,u.y*TILE+TILE/2,12,0,Math.PI*2); ctx.fill();
+    if(u.selected){ ctx.strokeStyle=COLORS.sel; ctx.lineWidth=3; ctx.stroke(); }
+    for(let i=0;i<u.ap;i++){ ctx.fillStyle='#ffffffcc'; ctx.fillRect(u.x*TILE+6+i*6,u.y*TILE+TILE-10,4,4) }
+  }
+
+  if(selectionBox){ const {x0,y0,x1,y1}=selectionBox; ctx.strokeStyle='#a78bfa'; ctx.setLineDash([6,6]); ctx.strokeRect(Math.min(x0,x1),Math.min(y0,y1), Math.abs(x1-x0), Math.abs(y1-y0)); ctx.setLineDash([]); }
+
+  if(state.fog){ ctx.fillStyle=COLORS.fog; ctx.globalCompositeOperation='multiply'; const visSet=vis||new Set(); for(let y=0;y<map.h;y++){ for(let x=0;x<map.w;x++){ if(!visSet.has(x+","+y)){ ctx.fillRect(x*TILE,y*TILE,TILE,TILE) } } } ctx.globalCompositeOperation='source-over'; }
+}
+function safeDraw(){ try{ draw() } catch(e){ console.error(e); showErrorOverlay(e) } }
+function showErrorOverlay(e){ const d=document.createElement('div'); d.style.cssText='position:absolute;inset:8px;pointer-events:none;color:#fff;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:12px;padding:10px;font:12px ui-monospace'; d.textContent='Render error: '+(e&&e.message?e.message:e); overlay.innerHTML=''; overlay.appendChild(d) }
+
+let dragging=false; let dragStart=null;
+function cellFromMouse(ev){ const rect=canvas.getBoundingClientRect(); const rw=Math.max(1,rect.width), rh=Math.max(1,rect.height); const x=Math.floor((ev.clientX-rect.left)/rw*map.w); const y=Math.floor((ev.clientY-rect.top)/rh*map.h); return {x:clamp(x,0,map.w-1), y:clamp(y,0,map.h-1)} }
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)) }
+canvas.addEventListener('mousemove',(ev)=>{ hoverCell=cellFromMouse(ev); if(dragging && dragStart){ selectionBox={x0:(dragStart.x-0.5)*TILE, y0:(dragStart.y-0.5)*TILE, x1:(hoverCell.x+0.5)*TILE, y1:(hoverCell.y+0.5)*TILE}; } safeDraw(); });
+canvas.addEventListener('mousedown',(ev)=>{ if(ev.button===0){ dragging=true; dragStart=cellFromMouse(ev); selectionBox={x0:dragStart.x*TILE, y0:dragStart.y*TILE, x1:dragStart.x*TILE, y1:dragStart.y*TILE}; } });
+window.addEventListener('mouseup',(ev)=>{
+  if(!dragging) return; dragging=false; const end=hoverCell; if(!end||!dragStart){ selectionBox=null; return }
+  const minx=Math.min(dragStart.x,end.x), maxx=Math.max(dragStart.x,end.x), miny=Math.min(dragStart.y,end.y), maxy=Math.max(dragStart.y,end.y);
+  const team=state.team; if(!ev.shiftKey){ for(const u of units){ u.selected=false } }
+  for(const u of units){ if(u.team===team && u.x>=minx && u.x<=maxx && u.y>=miny && u.y<=maxy){ u.selected=true } }
+  selectionBox=null; updateHUD(); safeDraw();
+});
+canvas.addEventListener('click',(ev)=>{ if(ev.button!==0) return; const c=cellFromMouse(ev); const u=units.find(u=>u.x===c.x&&u.y===c.y); if(u && u.team===state.team){ if(!ev.shiftKey) units.forEach(x=>x.selected=false); u.selected=true; updateHUD(); safeDraw(); } });
+canvas.addEventListener('contextmenu',(ev)=>{ ev.preventDefault(); issueMove(cellFromMouse(ev)); });
+window.addEventListener('keydown',(ev)=>{ if(ev.key==='e'||ev.key==='E'){ endTurn() } if(ev.key==='f'||ev.key==='F'){ state.fog=!state.fog; safeDraw() } if(ev.key==='Escape'){ units.forEach(u=>u.selected=false); updateHUD(); safeDraw() } if(ev.key==='m'||ev.key==='M'){ if(hoverCell) issueMove(hoverCell) } });
+
+function issueMove(dest){
+  const sel=units.filter(u=>u.selected && u.team===state.team && u.ap>0);
+  if(!sel.length || !dest) return;
+  for(const u of sel){
+    let steps=u.ap; let cur={x:u.x,y:u.y};
+    while(steps>0){ const path=bfs(cur,dest); if(!path || path.length<2) break; const next=path[1]; if(!next) break; if(unitAt(next.x,next.y)) break; u.x=next.x; u.y=next.y; cur=next; steps--; u.ap--; }
+  }
+  updateHUD(); safeDraw();
+}
+
+function updateHUD(){
+  document.getElementById('round').textContent=state.round;
+  document.getElementById('team').textContent=state.team;
+  document.getElementById('selCount').textContent=units.filter(u=>u.selected && u.team===state.team).length;
+  document.getElementById('ap').textContent=units.filter(u=>u.team===state.team).reduce((s,u)=>s+u.ap,0);
+  document.getElementById('commsUsed').textContent=state.comms[state.team];
+  document.getElementById('commsLimit').textContent=COMM_LIMIT;
+  const meter=document.getElementById('meterFill'); if(meter){ meter.style.width=(state.comms[state.team]/COMM_LIMIT*100)+'%' }
+  document.getElementById('turnTag').className='tag '+(state.team==='Blue'?'blue':'red');
+}
+function startTimer(){
+  clearInterval(state.timerId); const tEl=document.getElementById('timer'); if(tEl) tEl.textContent=state.timer;
+  const cEl=document.getElementById('clock'); if(cEl) cEl.textContent=state.timer; const co=document.getElementById('clockOverlay'); if(co) co.style.display='block';
+  state.timerId=setInterval(()=>{
+    state.timer--; if(state.timer<0){ state.timer=0; clearInterval(state.timerId); endTurn(); return }
+    const tEl2=document.getElementById('timer'); if(tEl2) tEl2.textContent=state.timer; const cEl2=document.getElementById('clock'); if(cEl2) cEl2.textContent=state.timer;
+  },1000);
+}
+function flipTurnOverlay(){ const ov=document.getElementById('turnOverlay'); const n=document.getElementById('nextTeam'); if(n) n.textContent=state.team; if(ov){ ov.style.display='block'; setTimeout(()=>{ ov.style.display='none' }, 900) } }
+
+const chatlog=document.getElementById('chatlog'); const chatInput=document.getElementById('chatInput');
+chatInput.addEventListener('keydown',(ev)=>{
+  if(ev.key==='Enter'){
+    if(state.comms[state.team] >= COMM_LIMIT){ pushLog('System','Comms budget reached for this turn.'); return }
+    const txt=(chatInput.value||'').trim(); if(!txt) return; chatInput.value='';
+    pushLog(state.team, txt); state.comms[state.team]++; updateHUD();
+    if(state.wsOpen){ try{ state.ws.send(JSON.stringify({kind:'chat', team:state.team, text:txt})) }catch(e){} }
+  }
+});
+function pushLog(who,text){ const el=document.createElement('div'); el.className='msg'; el.innerHTML=`<div><b>${who}</b>: ${escapeHtml(text+'')}</div><div class="meta">Round ${state.round}</div>`; chatlog.appendChild(el); chatlog.scrollTop=chatlog.scrollHeight; }
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])) }
+
+const wsBtn=document.getElementById('wsBtn'); const wsUrl=document.getElementById('wsUrl'); const wsState=document.getElementById('wsState');
+wsBtn.addEventListener('click',()=>{
+  try{
+    state.ws=new WebSocket(wsUrl.value);
+    wsState.textContent='Connecting…';
+    state.ws.addEventListener('open',()=>{ state.wsOpen=true; wsState.textContent='Connected'; });
+    state.ws.addEventListener('close',()=>{ state.wsOpen=false; wsState.textContent='Disconnected'; });
+    state.ws.addEventListener('message',(ev)=>{ try{ const msg=JSON.parse(ev.data); if(msg.kind==='chat'){ pushLog(msg.team,msg.text) } }catch(e){} });
+  }catch(e){ wsState.textContent='Error: '+e.message }
+});
+
+const seedInput=document.getElementById('seedInput'); const difficulty=document.getElementById('difficulty');
+const regen=document.getElementById('regen'); const endTurnBtn=document.getElementById('endTurn'); const toggleFOW=document.getElementById('toggleFOW'); const clearSel=document.getElementById('clearSel');
+regen.addEventListener('click',()=>{ genMap(seedInput.value, difficulty.value); safeDraw() });
+endTurnBtn.addEventListener('click', endTurn);
+toggleFOW.addEventListener('click', ()=>{ state.fog=!state.fog; safeDraw() });
+clearSel.addEventListener('click', ()=>{ units.forEach(u=>u.selected=false); updateHUD(); safeDraw() });
+
+const testBtn=document.getElementById('runTests'); const testRT=document.getElementById('regenAndTest'); const testOut=document.getElementById('testout');
+function logTest(msg){ testOut.textContent += (testOut.textContent?"\n":"") + msg }
+function resetTestOut(){ testOut.textContent=''; }
+function assert(cond,msg){ if(!cond) throw new Error('❌ '+msg); logTest('✅ '+msg) }
+function runTests(){
+  resetTestOut();
+  try{
+    assert(map.tiles.length===map.h,'tiles rows match height');
+    assert(map.tiles[0].length===map.w,'tiles cols match width');
+    for(const o of map.objectives){ assert(map.tiles[o.y][o.x]===2,'objective tile marked') }
+    const blues=units.filter(u=>u.team==='Blue'); const reds=units.filter(u=>u.team==='Red');
+    assert(blues.length>0 && blues.length<=6,'blue units spawn 1..6');
+    assert(reds.length>0 && reds.length<=6,'red units spawn 1..6');
+    const b0=blues[0]; const r0=reds[0];
+    assert(!!b0 && !!r0,'have at least one unit each');
+    const p1=bfs({x:b0.x,y:b0.y},{x:b0.x,y:b0.y});
+    assert(Array.isArray(p1) && p1.length===1,'bfs self path length 1');
+    const ns=neighbors(b0.x,b0.y); assert(Array.isArray(ns),'neighbors returns array'); for(let i=0;i<ns.length;i++){ assert(Array.isArray(ns[i]) && ns[i].length===2,'neighbor pair well-formed') }
+    logTest('\nAll tests passed.');
+  }catch(e){ logTest(String(e.message||e)); console.error(e) }
+}
+if(testBtn) testBtn.addEventListener('click', runTests);
+if(testRT) testRT.addEventListener('click', ()=>{ genMap(seedInput.value, difficulty.value); runTests(); safeDraw(); });
+
+function boot(){ genMap(seedInput.value, difficulty.value); resize(); safeDraw(); }
+window.addEventListener('load', boot);
+</script>
+</body>
+</html>
